@@ -69,34 +69,54 @@ class Vector(object):
     def v(self):
         return self.x, self.y
 
+
+class Image(object):
+    def __init__(self, image, row, column, frame_rate):
+        self.image = image
+        self.size = (image.get_width()/column, image.get_height()/row)
+        self.image_actual = image.subsurface((0, 0), self.size)
+        self.row = 1
+        self.column = 1
+        self.max_row = row # useless
+        self.max_column = column
+        self.frame_rate = frame_rate
+        self.frame = 0
+        self.max_frame = column * frame_rate
+
+    def get_image(self):
+        self.column = self.frame // self.frame_rate + 1
+        w, h = self.size
+        self.image_actual = self.image.subsurface(((self.column-1)*w,(self.row-1)*h),self.size)
+
+    def reset(self):
+        self.column = 1
+        self.max_frame = self.max_column * self.frame_rate
+        self.frame = 0
+        self.get_image()
+
+    def update(self):
+        self.get_image()
+        self.frame += 1
+        if self.frame == self.max_frame:
+            self.frame = 0
+        
+
 class Gameobj(object):
-    def __init__(self, world, name, image):
+    def __init__(self, world, name, image, row, column, fps, x, y):
         self.world = world
         self.name = name
-        self.image = image
-        self.image_actual = image
+        self.image = Image(image, row, column, fps)
         self.direction = 0
         self.location = Vector(0, 0)
         self.destination = Vector(0, 0)
-        self.old_destination = Vector(0, 0)
+        self.x_co = x
+        self.y_co = y
         self.speed = 0
         self.brain = None
         self.id = 0
-
-    def print_obj_info(self):
-        print('object details')
-        print('world: ',self.world)
-        print('name: ',self.name)
-        print('image: ',self.image)
-        print('image actual: ',self.image_actual)
-        print('direction: ',self.direction)
-        print('location: ',self.location)
-        print('destination: ',self.destination)
-        print('old destination: ',self.old_destination)
-        print('speed: ',self.speed)
-        print('brain: ',self.brain) 
-        print('obj id: ',self.id)
-
+        self.area = (20,20)
+        
+        
     def help(self):
         print('world refers to a reference to the object, (useful or not unknown)')
         print('name is the name of the object')
@@ -105,21 +125,18 @@ class Gameobj(object):
         print('direction shows where the object face, now only has 2 directions, left and right')
         print('location is the current location')
         print('destination is the current destination')
-        print('old destination is for lower usage of cpu for some functions')
         print('speed is the current speed')
         print('brain has not been developed yet')
         print('object id')
 
-    def render(self,surface,loc):
+    def render(self, surface, loc):
         x, y = self.location.v()
-        w, h = self.image.get_size()
-        sw, sh = surface.get_size()
+        w, h = self.image.size
+        sw, sh = surface.get_size() # surface width, surface height
         if loc.x - w < x < loc.x + sw + w and loc.y - h < y < loc.y + sh + h:
-            surface.blit(self.image_actual, (x - loc.x - w/2, y - loc.y - h/2))
+            surface.blit(self.image.image_actual, (x - loc.x - w/self.x_co, y - loc.y - h/self.y_co))
 
     def move(self):
-        if self.old_destination != self.destination:
-            self.update_image()
         if self.destination != self.location:
             location_to_destination = self.destination - self.location
             nor = location_to_destination.get_normalized()
@@ -128,20 +145,17 @@ class Gameobj(object):
                 self.location = self.location + velocity
             else:
                 self.location = self.destination
-            self.old_destination = self.destination
+            self.image.update()
+        else:
+            self.image.reset()
+            
         # move the object controlled by speed, locaiton and destination
 
-    def update_image(self):
-        if self.destination.x < self.location.x:
-            self.direction = 1
-        else:
-            self.direction = 0
+    def set_animation(self):
         if self.direction == 0:
-            self.image_actual = pygame.transform.flip(self.image, True, False)
+            self.image.row = 2
         else:
-            self.image_actual = self.image
-        # flip the image, further functions (such as animations) please written here
-        
+            self.image.row = 1
         
     
 class World(object):
@@ -152,6 +166,7 @@ class World(object):
         self.object = []
         self.mouse_count = [0, 0, 0]
         self.mouse_pos = Vector(0, 0)
+        self.occupied = [[0 for i in range(int(math.ceil(background.get_width()/20)))] for j in range(int(math.ceil(background.get_height()/20)))]
 
     def help(self):
         print('surface is the surface that all the image will be blitted on')
@@ -181,10 +196,11 @@ class World(object):
                 self.location.y = 0
         # move the locaion of surface to display
 
-    def render(self,a):
+    def update(self,a,ocp):
         self.move_surface()
         back = self.background.subsurface(self.location.v(), self.surface.get_size())
         self.surface.blit(back, (0, 0))
+        self.get_occupied(ocp)
         self.set_destination(a)
         x,y = pygame.mouse.get_pos()
         self.mouse_pos = Vector(x, y)
@@ -202,18 +218,38 @@ class World(object):
         if self.mouse_count[2] == 1:
             for o in self.object:
                 o.destination = self.mouse_pos + self.location
+                if o.destination.x < o.location.x:
+                    o.direction = 0
+                elif o.destination.x > o.location.x:
+                    o.direction = 1
+                o.set_animation()
         if 0 < self.mouse_count[2] < 10:
             for o in self.object:
                 w, h = a.get_size()
                 x, y = o.destination.v()
                 sx, sy = self.location.v()
                 self.surface.blit(a, (x - sx - w/2, y - sy - h/2))
+
         # set new destination of objects 
     
+    def get_occupied(self,ocp):
+        self.occupied = [[0 for i in range(int(math.ceil(self.background.get_width()/20)))] for j in range(int(math.ceil(self.background.get_height()/20)))]
+        for o in self.object:
+            ow, oh = o.area
+            top_left_x = int((o.location.x - ow / 2) // 20)
+            top_left_y = int((o.location.y - oh / 2) // 20)
+            down_right_x = math.ceil((o.location.x + ow / 2) / 20)
+            down_right_y = math.ceil((o.location.y + oh / 2) / 20)
+            for i in range(top_left_x, down_right_x, 1):
+                for j in range(top_left_y, down_right_y, 1):
+                    self.occupied[i][j] = 1
+                    x = i * 20 - self.location.x
+                    y = j * 20 - self.location.y
+                    self.surface.blit(ocp,(x,y))
+                    
             
+        
 
 
     
     
-
-   

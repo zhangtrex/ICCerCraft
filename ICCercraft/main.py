@@ -8,11 +8,12 @@ pygame.init()
 s = pygame.display.set_mode([800,600])
 
 Clock = pygame.time.Clock()
-man = pygame.image.load('steve1.png').convert_alpha()
+man = pygame.image.load('miaomiao.png').convert_alpha()
 back = pygame.image.load('sixing.jpg').convert()
 right_mouse = pygame.image.load('right_mouse.png').convert_alpha()
+occupied = pygame.image.load('occupied.png').convert()
 W = World(s,back)
-A = Gameobj(W,'steve',man);
+A = Gameobj(W,'steve',man,2,4,3,2,1.2);
 A.location = Vector(100,50)
 A.destination = Vector(800,200)
 A.speed = 10
@@ -30,7 +31,7 @@ while True:
         pygame.quit()
         break
 
-    W.render(right_mouse)
+    W.update(right_mouse,occupied)
     
 
     Clock.tick(30);
